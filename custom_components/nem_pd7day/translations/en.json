@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NEM PD7DAY",
+        "description": "Select one or more NEM regions to monitor.",
+        "data": {
+          "regions": "Regions"
+        }
+      }
+    },
+    "error": {
+      "select_at_least_one_region": "Select at least one region"
+    },
+    "abort": {
+      "already_configured": "NEM PD7DAY is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NEM PD7DAY options",
+        "data": {
+          "regions": "Regions"
+        }
+      }
+    },
+    "error": {
+      "select_at_least_one_region": "Select at least one region"
+    }
+  }
+}
