@@ -1,10 +1,16 @@
 {
   "domain": "nem_pd7day",
-  "name": "NEM PD7Day Forecast",
-  "version": "1.0.0",
-  "documentation": "https://www.nemweb.com.au/REPORTS/CURRENT/PD7Day/",
-  "requirements": [],
-  "codeowners": ["@local"],
+  "name": "AEMO NEM 7 Day Forecast",
+  "codeowners": ["@cabberley"],
   "config_flow": true,
-  "iot_class": "cloud_polling"
+  "dependencies": [],
+  "documentation": "https://github.com/cabberley/HA_NEM_7Day_Forecast",
+  "homekit": {},
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/cabberley/HA_NEM_7Day_Forecast/issues",
+  "loggers": ["nem_pd7day"],
+  "requirements": [],
+  "ssdp": [],
+  "version": "2026.4.1",
+  "zeroconf": []
 }

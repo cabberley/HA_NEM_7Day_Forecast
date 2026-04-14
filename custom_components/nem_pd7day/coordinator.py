@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import re
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -18,10 +17,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_REGIONS, DEFAULT_REGIONS, DOMAIN, SCAN_INTERVAL_SECONDS
-
-BASE_URL = "https://www.nemweb.com.au/REPORTS/CURRENT/PD7Day/"
-FILE_PATTERN = re.compile(r"PUBLIC_PD7DAY_.*\.(ZIP|CSV)$", re.IGNORECASE)
+from .const import (
+    BASE_URL,
+    CONF_REGIONS,
+    DEFAULT_REGIONS,
+    DOMAIN,
+    FILE_DT_PATTERN,
+    FILE_PATTERN,
+    SCAN_INTERVAL_SECONDS,
+)
 
 
 class LinkExtractor(HTMLParser):
@@ -47,6 +51,21 @@ def parse_dt(value: str) -> datetime:
 def to_iso_local(value: datetime) -> str:
     """Render datetime in local ISO style without timezone."""
     return value.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def source_file_datetime(file_name: str) -> datetime | None:
+    """Extract source file timestamp from the PD7DAY file name."""
+    match = FILE_DT_PATTERN.search(file_name)
+    if not match:
+        return None
+
+    timestamp = match.group(1)
+    for fmt in ("%Y%m%d%H%M%S", "%Y%m%d%H%M"):
+        try:
+            return datetime.strptime(timestamp, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def average_price(prices_slice: list[dict]) -> float | None:
@@ -210,6 +229,15 @@ class NEMPD7DayCoordinator(DataUpdateCoordinator[dict]):
         """Write CSV content to disk."""
         path.write_text(content, encoding="utf-8")
 
+    @staticmethod
+    def _cleanup_old_storage_files(storage_dir: Path, keep_file: Path) -> None:
+        """Remove stale downloaded files, keeping only the latest."""
+        for item in storage_dir.iterdir():
+            if item == keep_file:
+                continue
+            if item.is_file():
+                item.unlink(missing_ok=True)
+
     async def _async_update_data(self) -> dict:
         """Check for the newest PD7DAY file and parse configured regions."""
         try:
@@ -221,7 +249,10 @@ class NEMPD7DayCoordinator(DataUpdateCoordinator[dict]):
             newest_name = newest["name"]
 
             if newest_name == self._last_file_name and self._last_data is not None:
-                return self._last_data
+                payload = dict(self._last_data)
+                payload["last_success"] = to_iso_local(datetime.now())
+                await self._save_cached(payload)
+                return payload
 
             file_bytes = await self._fetch_file_bytes(newest["url"])
             csv_text = self._extract_csv_from_bytes(newest_name, file_bytes)
@@ -230,6 +261,13 @@ class NEMPD7DayCoordinator(DataUpdateCoordinator[dict]):
             storage_dir.mkdir(parents=True, exist_ok=True)
             csv_path = storage_dir / f"{newest_name}.csv"
             await self.hass.async_add_executor_job(self._write_csv_file, csv_path, csv_text)
+            await self.hass.async_add_executor_job(
+                self._cleanup_old_storage_files,
+                storage_dir,
+                csv_path,
+            )
+
+            file_dt = source_file_datetime(newest_name)
 
             region_payloads: dict[str, dict] = {}
             for region in self.regions:
@@ -261,9 +299,16 @@ class NEMPD7DayCoordinator(DataUpdateCoordinator[dict]):
                     return cached
                 raise UpdateFailed("No data rows for configured region selection")
 
+            if file_dt is None:
+                first_region = next(iter(region_payloads.values()), {})
+                fallback_dt = first_region.get("forecast_generated_at")
+            else:
+                fallback_dt = to_iso_local(file_dt)
+
             payload = {
                 "source_file": str(csv_path),
                 "source_file_name": newest_name,
+                "source_file_datetime": fallback_dt,
                 "regions": region_payloads,
                 "last_success": to_iso_local(datetime.now()),
             }
