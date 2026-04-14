@@ -13,7 +13,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_REGIONS, DEFAULT_REGIONS, DOMAIN
+from .const import AEMO_WWW, ATTRIBUTION, CONF_REGIONS, DEFAULT_REGIONS, DOMAIN
 from .coordinator import NEMPD7DayCoordinator
 
 
@@ -36,6 +36,21 @@ REGION_METRICS: tuple[RegionMetric, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class DiagnosticMetric:
+    """Description of an entry-level diagnostic sensor."""
+
+    key: str
+    suffix: str
+    name: str
+
+
+DIAGNOSTIC_METRICS: tuple[DiagnosticMetric, ...] = (
+    DiagnosticMetric("last_success", "last_update", "Last Update"),
+    DiagnosticMetric("source_file_datetime", "file_datetime", "Source File Datetime"),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -48,7 +63,11 @@ async def async_setup_entry(
         entry.data.get(CONF_REGIONS, DEFAULT_REGIONS),
     )
 
-    entities: list[NEMPD7DayRegionSensor] = []
+    entities: list[SensorEntity] = []
+
+    for metric in DIAGNOSTIC_METRICS:
+        entities.append(NEMPD7DayDiagnosticSensor(coordinator, entry, metric))
+
     for region in selected_regions:
         for metric in REGION_METRICS:
             entities.append(NEMPD7DayRegionSensor(coordinator, entry, region, metric))
@@ -76,11 +95,13 @@ class NEMPD7DayRegionSensor(CoordinatorEntity[NEMPD7DayCoordinator], SensorEntit
         self._attr_name = f"{region} {metric.name}"
         self._attr_native_unit_of_measurement = "$/kWh"
         self._attr_entity_category = metric.entity_category
+        self._attr_attribution = ATTRIBUTION
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{self._entry.entry_id}_{self._region}")},
-            name=f"NEM PD7DAY {self._region}",
-            manufacturer="AEMO NEMWeb",
-            model="PD7DAY",
+            name=f"AEMO NEM 7 Day Forecast: {self._region}",
+            manufacturer="CAbberley HA Integrations",
+            model="AEMO PD7DAY Data",
+            configuration_url=AEMO_WWW,
         )
         self._apply_payload_state()
 
@@ -131,3 +152,44 @@ class NEMPD7DayRegionSensor(CoordinatorEntity[NEMPD7DayCoordinator], SensorEntit
         data = self.coordinator.data or {}
         region_payloads = data.get("regions", {})
         return region_payloads.get(self._region)
+
+
+class NEMPD7DayDiagnosticSensor(CoordinatorEntity[NEMPD7DayCoordinator], SensorEntity):
+    """NEM PD7DAY entry-level diagnostic sensor."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: NEMPD7DayCoordinator,
+        entry: ConfigEntry,
+        metric: DiagnosticMetric,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._metric = metric
+        self._attr_unique_id = f"{entry.entry_id}_{metric.suffix}"
+        self._attr_name = metric.name
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="AEMO NEM 7 Day Forecast",
+            manufacturer="CAbberley Automation",
+            model="AEMO PD7DAY Data",
+        )
+        self._apply_payload_state()
+
+    def _apply_payload_state(self) -> None:
+        """Map latest coordinator payload into entity state."""
+        data = self.coordinator.data or {}
+        self._attr_native_value = data.get(self._metric.key)
+        self._attr_available = self._attr_native_value is not None
+        self._attr_extra_state_attributes = {
+            "source_file_name": data.get("source_file_name"),
+            "source_file": data.get("source_file"),
+        }
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._apply_payload_state()
+        super()._handle_coordinator_update()

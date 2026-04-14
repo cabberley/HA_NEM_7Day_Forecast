@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_REGIONS, DEFAULT_REGIONS, DOMAIN, PLATFORMS
+from .const import CONF_REGIONS, DEFAULT_REGIONS, DOMAIN, PLATFORMS, REGION_OPTIONS
 from .coordinator import NEMPD7DayCoordinator
 
 
@@ -60,6 +60,9 @@ async def _async_remove_deselected_regions(hass: HomeAssistant, entry: ConfigEnt
         remainder = unique_id[len(prefix) :]
         region_key, _, _ = remainder.partition("_")
         if not region_key:
+            continue
+
+        if region_key.upper() not in REGION_OPTIONS:
             continue
 
         if region_key not in selected_regions_lower:

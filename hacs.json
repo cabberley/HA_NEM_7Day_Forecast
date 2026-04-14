@@ -1,6 +1,6 @@
 {
-  "name": "NEM PD7Day Forecast",
-  "homeassistant": "2026.1.0",
+  "name": "AEMO NEM 7 Day Forecast",
+  "homeassistant": "2026.3.0",
   "render_readme": true,
   "hacs": "2.0.1",
   "render_readme": true
