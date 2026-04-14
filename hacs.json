@@ -3,5 +3,7 @@
   "homeassistant": "2026.3.0",
   "render_readme": true,
   "hacs": "2.0.1",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "nem_pd7day.zip"
 }
